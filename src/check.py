@@ -32,8 +32,10 @@ def get_dependencies_from_file(file):
                 dependencies.append((dep[0], dep[1]))
     return dependencies
 
-def get_url(dependency, version):
-    return f"https://pypi.org/project/{dependency}/{version}"
+def get_url(dependency, version=None):
+    if version: 
+        return f"https://pypi.org/project/{dependency}/{version}"
+    return f"https://pypi.org/project/{dependency}/"
 
 def get_python_bits_from_soup(soup):
     a_tags_in_sidebar = soup.select(".sidebar-section a")
@@ -69,19 +71,33 @@ def check(python_version, filepath):
             if python_version in supported_versions:
                 supported.append(dependency)
             else:
-                incompatible[dependency] = supported_versions
+                new_version_response = get_and_process_response(get_url(dependency))
+                if new_version_response is None:
+                    newest_supported = "unknown"
+                    newest_supported_versions = None
+                else:
+                    soup = BeautifulSoup(new_version_response.text, "html.parser")
+                    python_bits = get_python_bits_from_soup(soup)
+                    newest_supported_versions = get_supported_versions_from_python_bits(python_bits)
+                    newest_supported = python_version in newest_supported_versions
+                incompatible[dependency] = {"supported_versions": supported_versions, "newest_supported": newest_supported}
         time.sleep(0.5)
 
-    print("\n\n\n\n\n\n\n")
+    print("\n\n\n")
+    print("################################")
+    print("\n\n\n")
     print(f"Could not get information on:")
     for item in unknown:
         print(item)
 
+    print("\n\n\n")
     print("INCOMPATIBLE")
     for key, value in incompatible.items():
-        print(key)
-        print(f"supported versions: {value}")
+        print(f"{key}  {value}")
 
+    print("\n\n\n")
+    print("################################")
+    print("\n\n\n")
 
 if __name__=="__main__":
     python_version = sys.argv[1]
