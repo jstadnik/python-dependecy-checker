@@ -4,8 +4,6 @@ import urllib.request
 import time
 from bs4 import BeautifulSoup
 
-def get_python_versions_from_response(response):
-    pass
 
 def get_and_process_response(url):
     response = requests.get(url)
@@ -49,7 +47,8 @@ def get_supported_versions_from_python_bits(python_bits):
         bit = bit.strip().split()
         try:
             if bit[1] == "::":
-                supported.add(bit[2])
+                if bit[2] != "Implementation":
+                    supported.add(bit[2])
         except IndexError:
             pass
     return supported
