@@ -3,7 +3,20 @@ import requests
 import urllib.request
 import time
 from bs4 import BeautifulSoup
+from enum import Enum
 
+class Status(Enum):
+    SUPPORTED = 1
+    NOT_SUPPORTED = 0
+    UNKNOWN = -1
+
+    def desc(self):
+        display_dict = {
+            self.SUPPORTED: "True",
+            self.NOT_SUPPORTED: "False",
+            self.UNKNOWN: "Unknown"
+        }
+        return display_dict[self]
 
 def get_and_process_response(url):
     response = requests.get(url)
@@ -53,52 +66,64 @@ def get_supported_versions_from_python_bits(python_bits):
             pass
     return supported
 
-def check(python_version, filepath):
-    unknown = []
-    incompatible = {}
-    supported = []
-    dependencies = get_dependencies_from_file(filepath)
-    for dependency, version in dependencies:
-        print(f"CHECKING DEPENDENCY: {dependency}")
-        response = get_and_process_response(get_url(dependency, version))
-        if response is None:
-            unknown.append(dependency)
+def check_dependency(python_version, dependency, version=None):
+    # When version is not specified the url automatically points to the 
+    # newest version of the package
+    print(f"CHECKING DEPENDENCY: {dependency}")
+    response = get_and_process_response(get_url(dependency, version))
+    if response is None:
+        return Status.UNKNOWN, None
+    else:
+        soup = BeautifulSoup(response.text, "html.parser")
+        python_bits = get_python_bits_from_soup(soup)
+        supported_versions = get_supported_versions_from_python_bits(python_bits)
+        if python_version in supported_versions:
+            return Status.SUPPORTED, None
         else:
-            soup = BeautifulSoup(response.text, "html.parser")
-            python_bits = get_python_bits_from_soup(soup)
-            supported_versions = get_supported_versions_from_python_bits(python_bits)
-            if python_version in supported_versions:
-                supported.append(dependency)
+            return Status.NOT_SUPPORTED, supported_versions
+         
+def print_results(unknown, incompatible):    
+    print("\n\n\n")
+    print("################################")
+    print("\n\n\n")
+
+    if unknown:
+        print(f"Could not get information on:")
+        for key, value in unknown.items():
+            print(f"{item}   Newest supported: {value}")
+
+    if incompatible:
+        print("\n\n\n")
+        print("INCOMPATIBLE")
+        for key, value in incompatible.items():
+            print(f"{key}  Supported versions:{value['supported_versions']}   Newest version supported: {value['newest_supported']}")
+
+    print("\n\n\n")
+    print("################################")
+    print("\n\n\n")
+
+
+def check(python_version, filepath):
+    unknown = {}
+    incompatible = {}
+
+    dependencies = get_dependencies_from_file(filepath)
+
+    for dependency, version in dependencies:
+        status, supported_versions = check_dependency(python_version, dependency, version)
+        if status is not Status.SUPPORTED:
+            # Check if the newest version is compatible 
+            status_newest, _ = check_dependency(python_version, dependency)
+            if status is Status.UNKNOWN:
+                unknown[dependency] = {newest_supported: status_newest.desc()}
             else:
-                new_version_response = get_and_process_response(get_url(dependency))
-                if new_version_response is None:
-                    newest_supported = "unknown"
-                    newest_supported_versions = None
-                else:
-                    soup = BeautifulSoup(new_version_response.text, "html.parser")
-                    python_bits = get_python_bits_from_soup(soup)
-                    newest_supported_versions = get_supported_versions_from_python_bits(python_bits)
-                    newest_supported = python_version in newest_supported_versions
-                incompatible[dependency] = {"supported_versions": supported_versions, "newest_supported": newest_supported}
+                incompatible[dependency] = {"supported_versions": supported_versions, "newest_supported": status_newest.desc()}
         time.sleep(0.5)
 
-    print("\n\n\n")
-    print("################################")
-    print("\n\n\n")
-    print(f"Could not get information on:")
-    for item in unknown:
-        print(item)
-
-    print("\n\n\n")
-    print("INCOMPATIBLE")
-    for key, value in incompatible.items():
-        print(f"{key}  {value}")
-
-    print("\n\n\n")
-    print("################################")
-    print("\n\n\n")
+    return unknown, incompatible
 
 if __name__=="__main__":
     python_version = sys.argv[1]
     filepath = sys.argv[2]
-    check(python_version, filepath)
+    unknown, incompatible = check(python_version, filepath)
+    print_results(unknown, incompatible)
